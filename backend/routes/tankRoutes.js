@@ -30,11 +30,10 @@ router.post("/readings", async (req, res) => {
 });
 
 // Get all tank readings
+
 router.get("/readings", async (req, res) => {
   try {
-    const readings = await TankReading
-      .find()
-      .sort({ createdAt: -1 });
+    const readings = await TankReading.find().sort({ createdAt: -1 });
 
     res.json({
       message: "Tank readings fetched successfully",
@@ -47,5 +46,7 @@ router.get("/readings", async (req, res) => {
     });
   }
 });
+
+
 
 module.exports = router;

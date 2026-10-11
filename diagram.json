@@ -3,63 +3,14 @@
   "author": "Smart Water Tank Team",
   "editor": "wokwi",
   "parts": [
-    {
-      "type": "board-esp32-devkit-v1",
-      "id": "esp",
-      "top": 20,
-      "left": 20,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-hc-sr04",
-      "id": "ultrasonic",
-      "top": 20,
-      "left": 300,
-      "attrs": {
-        "distance": "70"
-      }
-    },
-    {
-      "type": "wokwi-slide-switch",
-      "id": "supply",
-      "top": 180,
-      "left": 300,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-relay-module",
-      "id": "relay",
-      "top": 260,
-      "left": 300,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-led",
-      "id": "green",
-      "top": 380,
-      "left": 300,
-      "attrs": {
-        "color": "green"
-      }
-    },
-    {
-      "type": "wokwi-led",
-      "id": "red",
-      "top": 380,
-      "left": 380,
-      "attrs": {
-        "color": "red"
-      }
-    },
-    {
-      "type": "wokwi-buzzer",
-      "id": "buzzer",
-      "top": 460,
-      "left": 340,
-      "attrs": {
-        "volume": "0.1"
-      }
-    }
+    { "type": "board-esp32-devkit-v1", "id": "esp", "top": 20, "left": 20, "attrs": {} },
+    { "type": "wokwi-hc-sr04", "id": "ultrasonic", "top": 20, "left": 300, "attrs": { "distance": "70" } },
+    { "type": "wokwi-hc-sr04", "id": "boreSensor", "top": -100, "left": 300, "attrs": { "distance": "30" } },
+    { "type": "wokwi-slide-switch", "id": "supply", "top": 180, "left": 300, "attrs": {} },
+    { "type": "wokwi-relay-module", "id": "relay", "top": 260, "left": 300, "attrs": {} },
+    { "type": "wokwi-led", "id": "green", "top": 380, "left": 300, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "red", "top": 380, "left": 380, "attrs": { "color": "red" } },
+    { "type": "wokwi-buzzer", "id": "buzzer", "top": 460, "left": 340, "attrs": { "volume": "0.1" } }
   ],
   "connections": [
     ["esp:5V", "ultrasonic:VCC", "red"],
@@ -67,23 +18,22 @@
     ["esp:D5", "ultrasonic:TRIG", "green"],
     ["esp:D18", "ultrasonic:ECHO", "green"],
 
+    ["esp:5V", "boreSensor:VCC", "red"],
+    ["esp:GND.1", "boreSensor:GND", "black"],
+    ["esp:D4", "boreSensor:TRIG", "green"],
+    ["esp:D19", "boreSensor:ECHO", "green"],
+
     ["esp:D14", "supply:2", "green"],
     ["esp:GND.2", "supply:1", "black"],
-
     ["esp:5V", "relay:VCC", "red"],
     ["esp:GND.1", "relay:GND", "black"],
     ["esp:D27", "relay:IN", "green"],
-
     ["esp:D25", "green:A", "green"],
     ["esp:GND.1", "green:C", "black"],
-
     ["esp:D26", "red:A", "red"],
     ["esp:GND.1", "red:C", "black"],
-
     ["esp:D33", "buzzer:1", "green"],
     ["esp:GND.1", "buzzer:2", "black"]
   ],
-"serialMonitor": {
-  "display": "always"
-}
+  "serialMonitor": { "display": "always" }
 }

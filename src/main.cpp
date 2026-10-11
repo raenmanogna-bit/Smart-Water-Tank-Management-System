@@ -1,123 +1,88 @@
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 
 #define TRIG_PIN 5
 #define ECHO_PIN 18
-
-#define SUPPLY_SWITCH 14
 #define RELAY_PIN 27
-
 #define GREEN_LED 25
 #define RED_LED 26
 #define BUZZER_PIN 33
 
-const float TANK_HEIGHT = 100.0;
-const float FULL_DISTANCE = 10.0;
+const char* ssid = "motorola edge 60_8489";
+const char* password = "Manogna@123";
 
-// Backend API running on your computer
-const char* WIFI_SSID = "Wokwi-GUEST";
-const char* WIFI_PASSWORD = "";
+const char* serverURL =
+    "http://10.116.189.7:5000/api/water-level";
 
-const char* SERVER_URL =
-    "http://host.wokwi.internal:5000/api/tank/readings";
+const float TANK_HEIGHT_CM = 15.0;
+const float PUMP_ON_LEVEL = 20.0;
+const float PUMP_OFF_LEVEL = 95.0;
 
-float getDistance() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
+// Set according to relay module behavior.
+// This assumes LOW activates the relay.
+const int RELAY_ON = LOW;
+const int RELAY_OFF = HIGH;
 
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
+bool pumpOn = false;
 
-  digitalWrite(TRIG_PIN, LOW);
+void setPump(bool state) {
+  pumpOn = state;
+  digitalWrite(RELAY_PIN, pumpOn ? RELAY_ON : RELAY_OFF);
 
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
-
-  if (duration == 0) {
-    return TANK_HEIGHT;
-  }
-
-  return duration / 58.0;
-}
-
-float getWaterLevel(float distance) {
-  float level =
-      ((TANK_HEIGHT - distance) / TANK_HEIGHT) * 100.0;
-
-  if (level < 0)
-    level = 0;
-
-  if (level > 100)
-    level = 100;
-
-  return level;
+  Serial.print("Pump: ");
+  Serial.println(pumpOn ? "ON" : "OFF");
 }
 
 void connectWiFi() {
-  Serial.print("Connecting to Wokwi WiFi");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD, 6);
+  Serial.print("Connecting to mobile hotspot");
 
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long startTime = millis();
+
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - startTime < 20000) {
     delay(500);
     Serial.print(".");
   }
 
-  Serial.println();
-  Serial.println("WiFi connected!");
-  Serial.print("ESP32 IP: ");
-  Serial.println(WiFi.localIP());
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected!");
+    Serial.print("ESP32 IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nWiFi connection failed!");
+  }
 }
 
-void sendDataToServer(
-    float distance,
-    float waterLevel,
-    bool filling,
-    bool waterAvailable
-) {
+void sendToBackend(float level, const String& status) {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected.");
+    Serial.println("WiFi unavailable - data not sent");
     return;
   }
 
   HTTPClient http;
-
-  http.begin(SERVER_URL);
-
+  http.begin(serverURL);
   http.addHeader("Content-Type", "application/json");
+  http.setTimeout(5000);
 
-  String motorStatus = filling ? "ON" : "OFF";
+  String payload = "{\"overheadLevel\":" +
+      String(level, 1) +
+      ",\"boreLevel\":90,\"status\":\"" +
+      status + "\"}";
 
-  String source;
+  int responseCode = http.POST(payload);
 
-  if (waterAvailable) {
-    source = "Municipal Supply";
+  Serial.print("Backend HTTP response: ");
+  Serial.println(responseCode);
+
+  if (responseCode > 0) {
+    Serial.println(http.getString());
   } else {
-    source = "No Supply";
-  }
-
-  String jsonData = "{";
-  jsonData += "\"distance\":" + String(distance, 2) + ",";
-  jsonData += "\"waterLevel\":" + String(waterLevel, 2) + ",";
-  jsonData += "\"motorStatus\":\"" + motorStatus + "\",";
-  jsonData += "\"source\":\"" + source + "\"";
-  jsonData += "}";
-
-  Serial.println("Sending data to server:");
-  Serial.println(jsonData);
-
-  int httpResponseCode = http.POST(jsonData);
-
-  Serial.print("HTTP Response Code: ");
-  Serial.println(httpResponseCode);
-
-  if (httpResponseCode > 0) {
-    String response = http.getString();
-
-    Serial.println("Server Response:");
-    Serial.println(response);
-  } else {
-    Serial.println("Failed to send data.");
+    Serial.println("Backend request failed");
   }
 
   http.end();
@@ -129,69 +94,105 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  pinMode(SUPPLY_SWITCH, INPUT_PULLUP);
-
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
 
-  digitalWrite(RELAY_PIN, LOW);
+  // Keep pump off during startup.
+  digitalWrite(RELAY_PIN, RELAY_OFF);
   digitalWrite(GREEN_LED, LOW);
   digitalWrite(RED_LED, LOW);
   digitalWrite(BUZZER_PIN, LOW);
 
   connectWiFi();
+
+  Serial.println("Smart Water Tank Monitoring Started");
 }
 
 void loop() {
-
-  bool waterAvailable =
-      digitalRead(SUPPLY_SWITCH) == LOW;
-
-  float distance = getDistance();
-
-  float waterLevel =
-      getWaterLevel(distance);
-
-  bool tankFull =
-      (waterLevel >= 90.0);
-
-  bool filling =
-      waterAvailable && !tankFull;
-
-  // Control relay
-  digitalWrite(
-      RELAY_PIN,
-      filling ? HIGH : LOW
-  );
-
-  // Green LED = motor/filling ON
-  digitalWrite(
-      GREEN_LED,
-      filling ? HIGH : LOW
-  );
-
-  // Red LED = tank full
-  digitalWrite(
-      RED_LED,
-      tankFull ? HIGH : LOW
-  );
-
-  // Buzzer when tank is full
-  if (tankFull) {
-    tone(BUZZER_PIN, 1000);
-  } else {
-    noTone(BUZZER_PIN);
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi disconnected. Reconnecting...");
+    connectWiFi();
   }
 
-  // Send data to backend
-  sendDataToServer(
-      distance,
-      waterLevel,
-      filling,
-      waterAvailable
-  );
+  // Trigger the ultrasonic sensor.
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
 
-  delay(3000);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  unsigned long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  // Invalid reading: keep pump OFF.
+  if (duration == 0) {
+    Serial.println("Sensor error - no reading");
+
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(RED_LED, HIGH);
+    setPump(false);
+    digitalWrite(BUZZER_PIN, LOW);
+
+    delay(2000);
+    return;
+  }
+
+  float distance = duration / 58.0;
+
+  // Out-of-range reading: keep pump OFF.
+  if (distance > TANK_HEIGHT_CM || distance < 0.5) {
+    Serial.println("Invalid reading - check sensor position");
+
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(RED_LED, HIGH);
+    setPump(false);
+    digitalWrite(BUZZER_PIN, LOW);
+
+    delay(2000);
+    return;
+  }
+
+  float overheadLevel =
+      ((TANK_HEIGHT_CM - distance) / TANK_HEIGHT_CM) * 100.0;
+
+  overheadLevel = constrain(overheadLevel, 0.0, 100.0);
+
+  String status = "NORMAL";
+
+  if (overheadLevel < PUMP_ON_LEVEL) {
+    status = "LOW OVERHEAD WATER";
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(RED_LED, HIGH);
+
+    setPump(true);
+  } else if (overheadLevel >= PUMP_OFF_LEVEL) {
+    status = "TANK FULL";
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(RED_LED, LOW);
+
+    setPump(false);
+  } else {
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(RED_LED, LOW);
+
+    // Maintain the existing pump state between 20% and 95%.
+    setPump(pumpOn);
+  }
+
+  digitalWrite(BUZZER_PIN, LOW);
+
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.print(" cm | Overhead level: ");
+  Serial.print(overheadLevel);
+  Serial.println("%");
+
+  Serial.print("Status: ");
+  Serial.println(status);
+
+  sendToBackend(overheadLevel, status);
+
+  delay(2000);
 }
